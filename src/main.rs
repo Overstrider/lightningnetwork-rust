@@ -1,6 +1,7 @@
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 
 mod db;
+mod worker;
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -18,8 +19,12 @@ async fn manual_hello() -> impl Responder {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    println!("Database initialized");
     db::initialize_database().expect("failed to initialize the database");
+    println!("[Main] Database initialized");
+
+    worker::spawn_worker();
+    println!("[Main] Worker thread started.");
+
     HttpServer::new(|| {
         App::new()
             .service(hello)
