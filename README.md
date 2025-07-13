@@ -35,11 +35,29 @@ You need Docker installed to run this application.
     curl http://localhost:8080/nodes
     ```
 
-## Design Philosophy
+## What was the reason for your focus? What problems were you trying to solve?
 
-The technical decisions for this project were guided by a minimalist approach suitable for the small scope of the application. The main goal was to provide a simple, robust, and efficient solution without over-engineering.
+The focus was on creating a simple, robust, and efficient solution that directly meets the requirements without over-engineering. The main problem was to build a reliable service that could continuously ingest data from an external source and serve it through a resilient API that would not crash under any circumstances.
 
-For example:
-*   **Database:** SQLite was chosen for its simplicity and because it runs in-process, avoiding the need for a separate database server.
-*   **Caching:** The in-memory cache (`moka`) is sufficient for improving performance without the complexity of an external service like Redis.
-*   **Configuration:** Environment variables (`.env`) provide enough flexibility for this scale.
+## How long did you spend on this project?
+
+2 Hours
+
+## Did you make any trade-offs for this project? What would you have done differently with more time?
+
+Yes, several trade-offs were made to keep the design minimalist and aligned with the project's scope:
+
+*   **Database:** I chose SQLite for its simplicity and because it runs in-process, avoiding the complexity of setting up and managing a separate database server like PostgreSQL.
+*   **Caching:** I used a simple in-memory cache (`moka`). It is sufficient for this scope and avoids the overhead of an external service like Redis.
+
+With more time, I would have added a comprehensive test suite, including unit tests for the data formatters and integration tests for the API endpoint.
+
+## What do you think is the weakest part of your project?
+
+The project's main weakness is also its strength: its minimalist design. While it is well-suited for the specific task, it lacks some features that would be necessary for a larger-scale, production application, such as a more comprehensive test suite.
+
+## Is there any other information you’d like us to know?
+
+The project's architecture was intentionally kept simple to avoid premature optimization, which I believe can be harmful if applied without a clear need. Solutions should be tailored to the problem at hand.
+
+For a project with a long-term vision, it is important to plan for expansion and choose more scalable technologies. However, for this project, the goal was to build a clean and reliable solution that perfectly fits the defined scope.
