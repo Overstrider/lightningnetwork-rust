@@ -1,0 +1,8 @@
+target/
+
+.git
+
+bipa.db
+
+Dockerfile
+.dockerignore 
