@@ -1,23 +1,25 @@
 use chrono::{TimeZone, Utc};
 
+// A couple of helper functions to format data for the API response.
+
 const SATS_PER_BTC: f64 = 100_000_000.0;
 
-/// Converte um valor em satoshis (i64) para uma string formatada em BTC.
+/// Converts capacity from sats (i64) to a formatted BTC string.
 pub fn format_capacity(sats: i64) -> String {
     let btc = sats as f64 / SATS_PER_BTC;
     format!("{:.8}", btc)
 }
 
-/// Converte um Unix timestamp (i64) para uma string no formato "YYYY-MM-DDTHH:MM:SSZ".
+/// Converts a Unix timestamp (i64) into a readable date string (RFC3339 format).
 pub fn format_timestamp(ts: i64) -> String {
-    // Cria um objeto DateTime<Utc> a partir do timestamp.
+    // Create a `DateTime<Utc>` object from the timestamp.
     let datetime = Utc.timestamp_opt(ts, 0).single();
 
-    // Formata a data para o padrão RFC3339, que corresponde ao seu exemplo.
+    // Format it into a standard date string.
     if let Some(dt) = datetime {
         dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
     } else {
-        // Retorna um valor padrão em caso de timestamp inválido.
+        // Fallback for invalid timestamps.
         "Invalid Timestamp".to_string()
     }
 } 

@@ -5,6 +5,10 @@ use std::env;
 use log::{error, info, warn};
 use reqwest::Client;
 
+// This module is the background worker. It's job is to fetch node data
+// from the API and save it to our local database on a timer.
+
+/// The node data we get from the Mempool API.
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Node {
@@ -14,15 +18,25 @@ pub struct Node {
     first_seen: i64,
 }
 
-async fn fetch_nodes() -> Result<Vec<Node>, reqwest::Error> {
-    info!("[Worker] Fetching nodes from the API...");
-    let nodes = reqwest::get("https://mempool.space/api/v1/lightning/nodes/rankings/connectivity")
+/// Grabs the latest node data from the Mempool API.
+async fn fetch_nodes(api_url: &str, client: &Client) -> Result<Vec<Node>, reqwest::Error> {
+    info!("[Worker] Fetching nodes from API...");
+    let nodes = client
+        .get(api_url)
+        .send()
         .await?
         .json::<Vec<Node>>()
         .await?;
     Ok(nodes)
 }
 
+/// Saves the list of nodes into the database.
+///
+/// It does two things in one transaction:
+/// 1. `INSERT OR IGNORE`: Adds any new nodes.
+/// 2. `UPDATE`: Updates info for existing nodes if it changed.
+///
+/// This is way more efficient than checking each node one by one.
 fn store_nodes(nodes: &[Node]) -> rusqlite::Result<(usize, usize)> {
     let db_path = env::var("DATABASE_PATH").unwrap_or("bipa.db".to_string());
     let conn = Connection::open(db_path)?;
@@ -56,70 +70,64 @@ fn store_nodes(nodes: &[Node]) -> rusqlite::Result<(usize, usize)> {
         }
     }
 
+    // Commit the transaction to make the changes permanent.
     tx.commit()?;
     Ok((inserted_count, updated_count))
 }
 
+/// Kicks off the background worker task.
+///
+/// This function spawns a Tokio task that runs in a loop.
+/// It fetches data on a timer and will retry a few times with a delay
+/// if the API or database fails, so it's pretty resilient.
 pub fn spawn_worker() {
     let interval_secs: u64 = env::var("FETCH_INTERVAL_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(10);
     let api_url = env::var("API_URL").unwrap_or("https://mempool.space/api/v1/lightning/nodes/rankings/connectivity".to_string());
     let timeout_secs: u64 = env::var("FETCH_TIMEOUT_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(30);
+    
+    let client = Client::builder()
+        .timeout(Duration::from_secs(timeout_secs))
+        .build()
+        .expect("Failed to build reqwest client");
 
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
         loop {
+            // Wait for the next tick.
             interval.tick().await;
+
+            // Simple retry loop.
             let mut attempts = 0;
             let max_attempts = 3;
             let mut backoff = 1;
 
             loop {
-                match Client::new().get(&api_url).timeout(Duration::from_secs(timeout_secs)).send().await {
-                    Ok(resp) => match resp.json::<Vec<Node>>().await {
-                        Ok(nodes) => {
-                            match store_nodes(&nodes) {
-                                Ok((inserted, updated)) => {
-                                    if inserted > 0 || updated > 0 {
-                                        info!("[Worker] Done. Inserted: {}, Updated: {}.", inserted, updated);
-                                    } else {
-                                        info!("[Worker] All node data is already up-to-date.");
-                                    }
-                                    break;
+                match fetch_nodes(&api_url, &client).await {
+                    Ok(nodes) => {
+                        // Got the nodes, now try to save them.
+                        match store_nodes(&nodes) {
+                            Ok((inserted, updated)) => {
+                                if inserted > 0 || updated > 0 {
+                                    info!("[Worker] DB updated. Inserted: {}, Updated: {}.", inserted, updated);
                                 }
-                                Err(e) => {
-                                    error!("[Worker] Failed to save nodes to DB: {}", e);
-                                    attempts += 1;
-                                    if attempts >= max_attempts {
-                                        warn!("[Worker] Max retries reached for storing nodes.");
-                                        break;
-                                    }
-                                    tokio::time::sleep(Duration::from_secs(backoff)).await;
-                                    backoff *= 2;
-                                }
+                                break; // All good, break the retry loop.
                             }
+                            Err(e) => error!("[Worker] Failed to save nodes to DB: {}", e),
                         }
-                        Err(e) => {
-                            error!("[Worker] Failed to parse nodes from API: {}", e);
-                            attempts += 1;
-                            if attempts >= max_attempts {
-                                warn!("[Worker] Max retries reached for parsing.");
-                                break;
-                            }
-                            tokio::time::sleep(Duration::from_secs(backoff)).await;
-                            backoff *= 2;
-                        }
-                    },
-                    Err(e) => {
-                        error!("[Worker] Failed to fetch nodes from API: {}", e);
-                        attempts += 1;
-                        if attempts >= max_attempts {
-                            warn!("[Worker] Max retries reached for fetch.");
-                            break;
-                        }
-                        tokio::time::sleep(Duration::from_secs(backoff)).await;
-                        backoff *= 2;
                     }
+                    Err(e) => error!("[Worker] Failed to fetch nodes from API: {}", e),
                 }
+
+                // If we're here, something failed. Time to retry.
+                attempts += 1;
+                if attempts >= max_attempts {
+                    warn!("[Worker] Max retries reached. Will try again later.");
+                    break;
+                }
+                
+                info!("[Worker] Retrying in {}s...", backoff);
+                tokio::time::sleep(Duration::from_secs(backoff)).await;
+                backoff *= 2; // Double the wait time for next retry.
             }
         }
     });
