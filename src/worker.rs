@@ -38,8 +38,8 @@ async fn fetch_nodes(api_url: &str, client: &Client) -> Result<Vec<Node>, reqwes
 ///
 /// This is way more efficient than checking each node one by one.
 fn store_nodes(nodes: &[Node]) -> rusqlite::Result<(usize, usize)> {
-    let db_path = env::var("DATABASE_PATH").unwrap_or("bipa.db".to_string());
-    let conn = Connection::open(db_path)?;
+    let db_path = env::var("DATABASE_PATH").unwrap_or("nodes.db".to_string());
+    let conn = rusqlite::Connection::open(db_path)?;
     let tx = conn.unchecked_transaction()?;
 
     let mut inserted_count = 0;

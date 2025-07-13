@@ -18,7 +18,7 @@ use models::{NodeResponse, NodeFromDb};
 /// by a background worker, so this function is read-only.
 #[get("/nodes")]
 async fn get_nodes(cache: web::Data<Cache<String, Vec<NodeResponse>>>) -> impl Responder {
-    let db_path = env::var("DATABASE_PATH").unwrap_or("bipa.db".to_string());
+    let db_path = env::var("DATABASE_PATH").unwrap_or("nodes.db".to_string());
     let cache_key = "nodes".to_string();
 
     // Try to get the response from the cache.
@@ -86,7 +86,7 @@ async fn main() -> std::io::Result<()> {
     env_logger::init();
 
     // Set up the database. The app won't start if this fails.
-    let db_path = env::var("DATABASE_PATH").unwrap_or("bipa.db".to_string());
+    let db_path = env::var("DATABASE_PATH").unwrap_or("nodes.db".to_string());
     if let Err(e) = db::initialize_database(&db_path) {
         error!("Failed to start database: {}", e);
         return Err(std::io::Error::new(std::io::ErrorKind::Other, "Database initialization failed"));
